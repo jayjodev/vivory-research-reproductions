@@ -1,0 +1,8 @@
+# Runtime for GitHub Actions reproduction jobs.
+# Notebooks add their own paper-specific deps via `!pip install` in setup cells.
+papermill==2.5.0
+ipykernel==6.29.5
+nbformat==5.10.4
+numpy
+pandas
+requests
