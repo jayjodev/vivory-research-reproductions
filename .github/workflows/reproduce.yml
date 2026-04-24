@@ -1,0 +1,77 @@
+name: reproduce
+
+on:
+  workflow_dispatch:
+    inputs:
+      repro_id:
+        description: Vivory reproduction row id
+        required: true
+        type: string
+
+jobs:
+  run-notebook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve notebook path
+        id: paths
+        run: |
+          REPRO_ID="${{ inputs.repro_id }}"
+          NB_PATH="reproductions/${REPRO_ID}/notebook.ipynb"
+          echo "nb=${NB_PATH}" >> "$GITHUB_OUTPUT"
+          if [ ! -f "${NB_PATH}" ]; then
+            echo "::error::Notebook not found at ${NB_PATH}"
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run notebook (papermill)
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          cd "reproductions/${{ inputs.repro_id }}"
+          papermill \
+            --cwd "$(pwd)" \
+            --log-output \
+            --kernel python3 \
+            --execution-timeout 3600 \
+            --progress-bar \
+            notebook.ipynb output.ipynb
+
+      - name: Collect metrics
+        if: always()
+        run: |
+          mkdir -p _artifacts
+          if [ -f "reproductions/${{ inputs.repro_id }}/metrics.json" ]; then
+            cp "reproductions/${{ inputs.repro_id }}/metrics.json" _artifacts/metrics.json
+          else
+            echo '{"error": "metrics.json not produced by notebook"}' > _artifacts/metrics.json
+          fi
+          if [ -f "reproductions/${{ inputs.repro_id }}/output.ipynb" ]; then
+            cp "reproductions/${{ inputs.repro_id }}/output.ipynb" _artifacts/output.ipynb
+          fi
+
+      - name: Upload metrics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-${{ inputs.repro_id }}
+          path: _artifacts/
+          retention-days: 30
